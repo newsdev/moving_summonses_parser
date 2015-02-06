@@ -6,18 +6,18 @@ New York Police Department Moving Summons Statistics Scraper & Parser
 
 This collection of tools scrapes the [N.Y.P.D.'s Traffic Summons data page](http://www.nyc.gov/html/nypd/html/traffic_reports/traffic_summons_reports.shtml), downloads the moving summons stats that are published per month per precinct there, then parses them into actual data.
 
-This tool is designed to minimally output a CSV with current-month moving summons data, but more advanced options are available.
+This tool is designed to minimally output a CSV with current-month moving summons data, but more advanced options are available too.
 
 After you install this tool (see below), you will be able to download the most recent PDFs from the NYPD's site and generate a CSV.
 
 Installation
 --------------
 
-Run the commands following a `$` on the command line (like Terminal on a Mac). This assumes you have a Ruby version manager (like (RVM)[https://rvm.io/] or [rbenv](https://github.com/sstephenson/rbenv)) and MySQL already installed on your machine.
+Run the commands following a `$` on the command line (like Terminal on a Mac). This assumes you have a Ruby version manager (like [RVM](https://rvm.io/) or [rbenv](https://github.com/sstephenson/rbenv)) and MySQL already installed on your machine.
 
 ````
-$ git clone git@github.com:nytinteractive/moving_summonses.git
-$ cd moving_summonses
+$ git clone git@github.com:nytinteractive/moving_summonses_parser.git
+$ cd moving_summonses_parser
 $ rbenv install jruby-1.7.16 # or another recent JRuby version
 $ rbenv local jruby-1.7.16
 $ create database moving_summonses # creates a database in MySQL called "moving_summonses"
