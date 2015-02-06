@@ -1,0 +1,4 @@
+input
+config.yml
+*.csv
+*.jpeg*
