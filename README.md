@@ -91,7 +91,7 @@ Export from MySQL to CSV:
 -------------------------
 To export from MySQL to CSV: 
 ````
-mysql compstat -e "select * from crimes_by_precinct" | sed 's/	/","/g;s/^/"/;s/$/"/;s/\n//g' > crime_stats_from_mysql.csv
+mysql compstat -e "select * from moving_violations_by_precinct" | sed 's/	/","/g;s/^/"/;s/$/"/;s/\n//g' > moving_violations_from_mysql.csv
 ````
 taking care to ensure that the first regex is a real tab. (If on Mac/BSD; on Unix, \t is fine.)
 
