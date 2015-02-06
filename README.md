@@ -34,7 +34,7 @@ $ moving_summons_scraper.rb MONTH YEAR #once the scraper is installed, execute i
 Usage
 ------
 
-- `$ compstat_scraper.rb 2 2015` (takes 2 arguments, month, then year) Scrapes the most recent PDFs from the NYPD site. NOTE: You have to supply the current month and year of the PDFs on the NYPD's site. The script needs you to tell it correctly, or else the stats will be assigned to the wrong month/year.
+- `$ compstat_scraper.rb 2 2015` (takes 2 arguments, month, then year) Scrapes the most recent PDFs from the NYPD site. NOTE: You have to supply the *correct* current month and year of the PDFs on the NYPD's site. The script needs you to tell it correctly, or else the stats will be assigned to the wrong month/year.
 
 Also, note that if you run the script multiple times without a database, rows will be duplicated in the CSV. You should dedupe it with UNIX's `uniq` tool, in Sublime Text or in Excel.
 
