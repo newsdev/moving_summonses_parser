@@ -91,20 +91,22 @@ MOVING_SUMMONS_HEADERS   =   ["backing_unsafely",
 
 MOVING_SUMMONS_HEADER_TRANSLATION = Hash[*RAW_MOVING_SUMMONS_HEADERS.zip(MOVING_SUMMONS_HEADERS).flatten]
 
+DEFAULT_NAME = 'moving_violations'
 class MovingSummonsParser
   def initialize(config)
     @config = config
     # setup the places we're going to put our data (MySQL and a CSV for data, S3 for pdfs).
-    @csv_output = @config.has_key?("csv") ? @config["csv"] : "moving_summons_stats.csv"
-    open(@csv_output , 'wb'){|f| f << "precinct, month, year, " + MOVING_SUMMONS_HEADERS.join(", ") + "\n"} unless !@csv_output || File.exists?(@csv_output)
+    @csv_output = @config.has_key?("csv") ? @config["csv"] : "#{DEFAULT_NAME}.csv"
+    open(@csv_output , 'wb'){|f| f << "#{MovingSummonsReport.unique_identifiers.map(&:first).map(&:to_s).join(',')}, " + MOVING_SUMMONS_HEADERS.join(", ") + "\n"} unless !@csv_output || File.exists?(@csv_output)
     AWS.config(access_key_id: @config['aws']['access_key_id'], secret_access_key: @config['aws']['secret_access_key']) if @config['aws']
     ActiveRecord::Base.establish_connection(:adapter => 'jdbcmysql', :host => @config['mysql']['host'], :username => @config['mysql']['username'], :password => @config['mysql']['password'], :port => @config['mysql']['port'], :database => @config['mysql']['database']) unless !@config || !@config['mysql']
-    ActiveRecord::Base.connection.execute("CREATE TABLE IF NOT EXISTS moving_violations_by_precinct(precinct varchar(30), month integer, year integer, "+
-      MOVING_SUMMONS_HEADERS.join(" integer,")+" integer" +
-      ")") if @config["mysql"]
-    ActiveRecord::Base.connection.execute("CREATE TABLE IF NOT EXISTS moving_violations_citywide(precinct varchar(30), month integer, year integer, "+
-      MOVING_SUMMONS_HEADERS.join(" integer,")+" integer" +
-      ")") if @config["mysql"]
+    @table_names = ["#{DEFAULT_NAME}_by_precinct", "#{DEFAULT_NAME}_citywide"]
+    @table_names.each do |table_name|
+      ActiveRecord::Base.connection.execute("CREATE TABLE IF NOT EXISTS #{table_name}(#{MovingSummonsReport.unique_identifiers.map{|col, type| "#{col} #{type}"}.join(',') }, "+
+        MOVING_SUMMONS_HEADERS.join(" integer,")+" integer" +
+        ")") if @config["mysql"]
+    end
+    @s3 = AWS::S3.new          
   end
 
   def process(pdf_data, pdf_path, month, year)
@@ -113,29 +115,30 @@ class MovingSummonsParser
     return if report.nil?
     
     # if this report is already in the database, don't put it in the DB (and assume it exists in S3, perhaps under another date)
-    table_name = (report.precinct == 'city') ? 'moving_violations_citywide' : 'moving_violations_by_precinct'
-    return if @config['mysql'] && ActiveRecord::Base.connection.active? && !ActiveRecord::Base.connection.execute("SELECT * FROM #{table_name} WHERE precinct = '#{report.precinct}' AND month = '#{report.month}' AND year = '#{report.year}'").empty?
+    table_name = (report.precinct == 'city') ? @table_names[1] : @table_names[0]
+    return if @config['mysql'] && ActiveRecord::Base.connection.active? && !ActiveRecord::Base.connection.execute("SELECT * FROM #{table_name} WHERE #{MovingSummonsReport.unique_identifiers.map(&:first).map{|key| "#{key} = #{report.enquote_if_necessary(key)}"}.join(" AND ")}").empty?
     
     # add our data to MySQL, if config.yml says to.
-    ActiveRecord::Base.connection.execute("INSERT INTO #{table_name}(precinct, month, year, #{MOVING_SUMMONS_HEADERS.join(',')}) VALUES (" + report.to_csv_row(true)+ ")") if @config['mysql']
+    ActiveRecord::Base.connection.execute("INSERT INTO #{table_name}(#{MovingSummonsReport.unique_identifiers.map(&:first).map(&:to_s).join(',')}, #{MOVING_SUMMONS_HEADERS.join(',')}) VALUES (" + report.to_csv_row(true)+ ")") if @config['mysql']
 
 
     # N.B.: If there's no database, you'll get duplicate records in the CSV. 
     open(@csv_output, 'ab'){|f| f << report.to_csv_row + "\n"} if @csv_output
 
-    puts "#{pct}: #{report.month}/#{report.year}"
+    puts report.unique_id
 
     # Save the file to disk and/or S3, if specified in config.yml
     if @config['aws'] && @config['aws']['s3']
-      if !@s3[config['aws']['s3']['bucket']].objects[key].exists?
+      key = File.join(@config['aws']['s3']['bucket_path'], report.unique_id, pdf_basename)
+
+      if !@s3.buckets[@config['aws']['s3']['bucket']].objects[key].exists?
         S3Publisher.publish(@config['aws']['s3']['bucket'], {logger: 'faux /dev/null'}) do |p| 
-          p.push( File.join('moving_summonses', report.year.to_s, report.month.to_s, pdf_basename), 
-                  data: pdf_data, gzip: false) 
+          p.push( key, data: pdf_data, gzip: false) 
         end
       end
     end
     if @config['local_pdfs_path']
-      full_path = File.join(@config['local_pdfs_path'], "#{report.year}_#{report.month}_sum", pdf_basename)
+      full_path = File.join(@config['local_pdfs_path'], report.shared_id, pdf_basename)
       FileUtils.mkdir_p( File.dirname full_path )
       FileUtils.copy(report.path, full_path) unless File.exists?(full_path) # don't overwrite
     end
@@ -143,7 +146,7 @@ class MovingSummonsParser
 
   # transform a PDF into the data we want to extract
   def parse_pdf(pdf, pdf_basename, pct, month, year)
-    tmp_dir = File.join(Dir::tmpdir, "moving_summons_pdfs")
+    tmp_dir = File.join(Dir::tmpdir, DEFAULT_NAME)
     Dir.mkdir(tmp_dir) unless Dir.exists?(tmp_dir)
 
     # write the file to disk; we need to write the file to disk for Tabula to use it.  
@@ -190,8 +193,10 @@ end
 
 # a class to represent the data contained in each report.
 class MovingSummonsReport
-  attr_reader :precinct, :month, :year, :path
-  attr_accessor :violations
+  def self.unique_identifiers
+    [[:precinct, 'varchar(30)'], [:month, :integer], [:year, :integer]]
+  end
+  attr_accessor(:headers, :path, :violations, *self.unique_identifiers.map(&:first))
 
   def initialize pct, month, year, path
     @precinct = pct
@@ -201,8 +206,26 @@ class MovingSummonsReport
     @violations = {}
   end
 
+  # for insertion into a database.
+  def enquote_if_necessary(method)
+    if Hash[*self.class.unique_identifiers.flatten][method] == :integer
+      send(method)
+    else
+      "'#{send(method)}'"
+    end
+  end  
+
+  def shared_id
+    self.class.unique_identifiers[1..-1].map(&:first).map{|m|self.send(m)}.map(&:to_s)
+  end
+
+  def unique_id
+    self.class.unique_identifiers.map(&:first).map{|m|self.send(m)}.map(&:to_s).join('-')
+  end
+
+
   def to_a
-    [@precinct, @month, @year] + MOVING_SUMMONS_HEADERS.map{|h| @violations[h]}
+    self.class.unique_identifiers.map(&:first).map{|field| self.send(field) } + MOVING_SUMMONS_HEADERS.map{|h| @violations[h]}
   end
 
   def to_csv_row(enquote=false)

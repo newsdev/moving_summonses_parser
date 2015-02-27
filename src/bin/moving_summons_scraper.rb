@@ -16,7 +16,7 @@ if __FILE__ == $0
 
   month = ARGV[0].to_i
   year = ARGV[1].to_i
-  raise ArgumentError, "you must specify the month and year of these reports as the arguments to parse_local_moving_summons_reports.rb" unless month > 0 && month <= 12 && year > 2000 && year < 3000 # lol who are we kidding no one is going to use this script in 2020, let alone 2999
+  raise ArgumentError, "you must specify the month, then year of these reports as the arguments to parse_local_moving_summons_reports.rb" unless month > 0 && month <= 12 && year > 2000 && year < 3000 # lol who are we kidding no one is going to use this script in 2020, let alone 2999
 
   # scrape the page to download each precinct's report
   scraper = Upton::Scraper.new("http://www.nyc.gov/html/nypd/html/traffic_reports/traffic_summons_reports.shtml", '.bodytext table td a')
